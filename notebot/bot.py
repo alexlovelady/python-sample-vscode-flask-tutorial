@@ -40,7 +40,7 @@ async def join(ctx):
     channel_names[ctx.guild.id] = channel.name
 
     vc.start_recording(
-        discord.sinks.WaveSink(),
+        discord.sinks.MP3Sink(),
         recording_finished,
         ctx.channel,
         ctx.guild.id

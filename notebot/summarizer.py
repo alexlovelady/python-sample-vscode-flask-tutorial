@@ -25,7 +25,7 @@ async def summarize_transcript(transcript: str) -> dict:
         "max_tokens": 2000
     }
 
-    async with httpx.AsyncClient(timeout=180) as client:
+    async with httpx.AsyncClient(timeout=300) as client:
         r = await client.post(url, json=payload)
         r.raise_for_status()
 
