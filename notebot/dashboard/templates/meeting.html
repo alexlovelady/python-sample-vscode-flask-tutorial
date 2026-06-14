@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ meeting.date }} — {{ title }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="/" class="back">← All Meetings</a>
+      <span class="logo">🎙️ NoteBot</span>
+    </div>
+  </header>
+
+  <main class="detail">
+    <div class="detail-header">
+      <h2>{{ meeting.date }}</h2>
+      <div class="detail-meta">
+        <span># {{ meeting.channel }}</span>
+        <span>👥 {{ meeting.speakers | join(', ') }}</span>
+        <span>⏱ {{ meeting.duration_minutes }} min</span>
+        {% if meeting.google_doc_url %}
+        <a href="{{ meeting.google_doc_url }}" target="_blank" class="doc-link">📄 Google Doc</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <section class="section">
+      <h3>Summary</h3>
+      <p>{{ meeting.summary }}</p>
+    </section>
+
+    {% if meeting.topics %}
+    <section class="section">
+      <h3>🗂️ Topics</h3>
+      <ul>{% for t in meeting.topics %}<li>{{ t }}</li>{% endfor %}</ul>
+    </section>
+    {% endif %}
+
+    {% if meeting.decisions %}
+    <section class="section">
+      <h3>✅ Decisions</h3>
+      <ul>{% for d in meeting.decisions %}<li>{{ d }}</li>{% endfor %}</ul>
+    </section>
+    {% endif %}
+
+    {% if meeting.action_items %}
+    <section class="section">
+      <h3>📌 Action Items</h3>
+      <ul>{% for a in meeting.action_items %}<li>{{ a }}</li>{% endfor %}</ul>
+    </section>
+    {% endif %}
+
+    {% if meeting.blockers %}
+    <section class="section">
+      <h3>🚧 Blockers</h3>
+      <ul>{% for b in meeting.blockers %}<li>{{ b }}</li>{% endfor %}</ul>
+    </section>
+    {% endif %}
+
+    {% if meeting.transcript %}
+    <section class="section transcript">
+      <h3>📝 Full Transcript</h3>
+      <pre>{{ meeting.transcript }}</pre>
+    </section>
+    {% endif %}
+  </main>
+</body>
+</html>
