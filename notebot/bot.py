@@ -16,7 +16,8 @@ init_db()
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+GUILD_ID = int(os.getenv("DISCORD_GUILD_ID", 0))
+bot = commands.Bot(command_prefix="!", intents=intents, debug_guilds=[GUILD_ID])
 
 TRIGGER_USERS = {236708079872376834, 1074610938684121138}  # Mike, Alex
 
