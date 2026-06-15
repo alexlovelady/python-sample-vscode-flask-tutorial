@@ -1,4 +1,4 @@
-import uvicorn, os, json, asyncio
+import uvicorn, os, json, wave, io, asyncio
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -30,6 +30,15 @@ def parse_json_field(value):
         except Exception:
             return []
     return value or []
+
+def pcm_to_wav(pcm_bytes: bytes, channels: int = 2, rate: int = 48000, sampwidth: int = 2) -> bytes:
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(sampwidth)
+        wf.setframerate(rate)
+        wf.writeframes(pcm_bytes)
+    return buf.getvalue()
 
 def render(template_name: str, **ctx) -> HTMLResponse:
     return HTMLResponse(jinja_env.get_template(template_name).render(**ctx))
@@ -74,10 +83,11 @@ async def process_recording(
     full_transcript_lines = []
     for audio_file, display_name in zip(audio_files, speaker_names):
         try:
-            ogg_bytes = await audio_file.read()
-            if not ogg_bytes:
+            pcm_bytes = await audio_file.read()
+            if not pcm_bytes:
                 continue
-            text = await asyncio.to_thread(transcribe_audio, ogg_bytes)
+            wav_bytes = pcm_to_wav(pcm_bytes)
+            text = await asyncio.to_thread(transcribe_audio, wav_bytes)
             if text.strip():
                 full_transcript_lines.append(f"{display_name}: {text.strip()}")
         except Exception as e:

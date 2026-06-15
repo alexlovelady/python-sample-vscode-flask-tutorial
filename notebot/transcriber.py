@@ -18,7 +18,7 @@ def get_model():
 
 def transcribe_audio(audio_bytes: bytes) -> str:
     model = get_model()
-    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
         f.write(audio_bytes)
         tmp_path = f.name
     try:

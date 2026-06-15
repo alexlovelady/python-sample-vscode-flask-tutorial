@@ -6,9 +6,8 @@ const {
   REST, Routes, SlashCommandBuilder
 } = require('discord.js');
 const { joinVoiceChannel, EndBehaviorType } = require('@discordjs/voice');
-const prism = require('prism-media');
+const OpusScript = require('opusscript');
 const { createWriteStream, createReadStream, unlinkSync, existsSync, statSync } = require('fs');
-const { pipeline } = require('stream');
 const axios = require('axios');
 const FormData = require('form-data');
 
@@ -42,20 +41,37 @@ let speakerFiles      = new Map(); // userId → { filename, displayName, rawStr
 function subscribeUser(receiver, userId, displayName) {
   if (speakerFiles.has(userId)) return;
 
-  const filename    = `rec_${userId}_${Date.now()}.ogg`;
+  const filename    = `rec_${userId}_${Date.now()}.pcm`;
   const rawStream   = receiver.subscribe(userId, { end: EndBehaviorType.Manual });
-  const oggEncoder  = new prism.opus.OggLogicalBitstream({
-    opusHead: { channelCount: 2, sampleRate: 48000 },
-    pageSizeControl: { maxPackets: 10 },
-  });
   const writeStream = createWriteStream(filename);
 
-  pipeline(rawStream, oggEncoder, writeStream, err => {
-    if (err && err.code !== 'ERR_STREAM_DESTROYED') {
-      console.error(`[audio] pipeline error for ${displayName}:`, err.message);
-    } else {
-      console.log(`[audio] pipeline finished for ${displayName}`);
-    }
+  let decoder;
+  try {
+    decoder = new OpusScript(48000, 2, OpusScript.Application.AUDIO);
+  } catch (err) {
+    console.error(`[audio] decoder init failed for ${displayName}:`, err.message);
+    rawStream.destroy();
+    return;
+  }
+
+  rawStream.on('data', packet => {
+    try {
+      const pcm = decoder.decode(packet);
+      writeStream.write(Buffer.from(pcm.buffer));
+    } catch (_) {}
+  });
+
+  rawStream.on('end', () => {
+    try { decoder.delete(); } catch (_) {}
+    writeStream.end();
+    console.log(`[audio] finished writing ${displayName}`);
+  });
+
+  rawStream.on('error', err => {
+    if (err.code !== 'ERR_STREAM_DESTROYED')
+      console.error(`[audio] error for ${displayName}:`, err.message);
+    try { decoder.delete(); } catch (_) {}
+    writeStream.end();
   });
 
   speakerFiles.set(userId, { filename, displayName, rawStream, writeStream });
@@ -146,8 +162,8 @@ async function processRecording(duration, chanName, txtChan) {
       if (existsSync(filename) && statSync(filename).size > 0) {
         console.log(`[process] including ${displayName} — ${statSync(filename).size} bytes`);
         form.append('audio_files',   createReadStream(filename), {
-          filename:    `${userId}.ogg`,
-          contentType: 'audio/ogg',
+          filename:    `${userId}.pcm`,
+          contentType: 'audio/pcm',
         });
         form.append('speaker_names', displayName);
         hasAudio = true;
