@@ -3,6 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from jinja2 import Environment, FileSystemLoader
 from dotenv import load_dotenv
 
 import sys
@@ -11,9 +12,11 @@ from db import get_all_meetings, get_meeting
 
 load_dotenv()
 
+_here = os.path.dirname(os.path.abspath(__file__))
+
 app = FastAPI(title="AMP Titans NoteBot Dashboard")
-app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
-templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
+app.mount("/static", StaticFiles(directory=os.path.join(_here, "static")), name="static")
+templates = Jinja2Templates(env=Environment(loader=FileSystemLoader(os.path.join(_here, "templates"))))
 
 def parse_json_field(value):
     if isinstance(value, str):
