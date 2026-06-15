@@ -21,6 +21,9 @@ bot = commands.Bot(command_prefix="!", intents=intents, debug_guilds=[GUILD_ID])
 
 TRIGGER_USERS = {236708079872376834, 1074610938684121138}  # Mike, Alex
 
+class NoteSink(discord.sinks.MP3Sink):
+    __sink_listeners__ = {}
+
 connections = {}          # guild_id → voice_client
 start_times = {}          # guild_id → unix timestamp
 channel_names = {}        # guild_id → voice channel name
@@ -34,6 +37,9 @@ async def on_ready():
 
 @bot.event
 async def on_voice_state_update(member, before, after):
+    if member.id == bot.user.id:
+        return  # ignore the bot's own voice state changes
+
     guild = member.guild
     guild_id = guild.id
 
@@ -57,7 +63,7 @@ async def on_voice_state_update(member, before, after):
             channel_names[guild_id] = channel.name
             recording_channels[guild_id] = channel.id
             vc.start_recording(
-                discord.sinks.MP3Sink(),
+                NoteSink(),
                 recording_finished,
                 text_channel,
                 guild_id
@@ -95,7 +101,7 @@ async def join(ctx):
         channel_names[ctx.guild.id] = channel.name
 
         vc.start_recording(
-            discord.sinks.MP3Sink(),
+            NoteSink(),
             recording_finished,
             ctx.channel,
             ctx.guild.id
