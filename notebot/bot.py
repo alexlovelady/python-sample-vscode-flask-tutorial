@@ -16,7 +16,7 @@ init_db()
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix="/", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 TRIGGER_USERS = {236708079872376834, 1074610938684121138}  # Mike, Alex
 
