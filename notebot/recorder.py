@@ -48,41 +48,68 @@ _rec_txt_channel = None
 # ─── Audio capture threads ────────────────────────────────────────────────────
 
 def _capture_mic(frames: list, stop: Event):
-    import warnings
+    import warnings, ctypes
     warnings.filterwarnings("ignore", message="data discontinuity")
     try:
+        ctypes.windll.ole32.CoInitialize(None)
+    except Exception:
+        pass
+    try:
         mic   = sc.default_microphone()
-        chunk = int(SAMPLE_RATE * 0.5)   # 500ms chunks — more stable than 100ms
+        chunk = int(SAMPLE_RATE * 0.5)
         with mic.recorder(samplerate=SAMPLE_RATE, channels=1, blocksize=chunk) as r:
             while not stop.is_set():
                 frames.append(r.record(numframes=chunk).copy())
-    except Exception as e:
-        print(f"[mic] error: {e}")
+        print("[mic] recording finished")
+    except BaseException as e:
+        print(f"[mic] error: {type(e).__name__}: {e}")
+    finally:
+        try:
+            ctypes.windll.ole32.CoUninitialize()
+        except Exception:
+            pass
 
 def _capture_loopback(frames: list, stop: Event):
-    import warnings
+    import warnings, ctypes
     warnings.filterwarnings("ignore", message="data discontinuity")
     try:
-        # Windows: loopback is a virtual mic derived from the speaker device
+        ctypes.windll.ole32.CoInitialize(None)
+    except Exception:
+        pass
+    try:
+        # Find loopback device for default speaker
         default_spk = sc.default_speaker()
+        loopback = None
         try:
             loopback = sc.get_microphone(default_spk.name, include_loopback=True)
-        except Exception:
-            # Fallback: pick any loopback device
-            loopback = next(
-                (m for m in sc.all_microphones(include_loopback=True)
-                 if "loopback" in m.name.lower()),
-                None
-            )
+            print(f"[loopback] using: {loopback.name}")
+        except BaseException as e:
+            print(f"[loopback] primary lookup failed ({type(e).__name__}: {e}), trying fallback...")
+            try:
+                for m in sc.all_microphones(include_loopback=True):
+                    if "loopback" in getattr(m, 'name', '').lower():
+                        loopback = m
+                        print(f"[loopback] fallback device: {m.name}")
+                        break
+            except BaseException as e2:
+                print(f"[loopback] fallback also failed: {type(e2).__name__}: {e2}")
+
         if loopback is None:
-            print("[loopback] no loopback device found — only mic will be recorded")
+            print("[loopback] no loopback device found — only mic will be captured")
             return
+
         chunk = int(SAMPLE_RATE * 0.5)
         with loopback.recorder(samplerate=SAMPLE_RATE, channels=1, blocksize=chunk) as r:
             while not stop.is_set():
                 frames.append(r.record(numframes=chunk).copy())
-    except Exception as e:
-        print(f"[loopback] error: {e}")
+        print("[loopback] recording finished")
+    except BaseException as e:
+        print(f"[loopback] error: {type(e).__name__}: {e}")
+    finally:
+        try:
+            ctypes.windll.ole32.CoUninitialize()
+        except Exception:
+            pass
 
 def _frames_to_wav(frames: list) -> bytes:
     if not frames:
@@ -268,24 +295,43 @@ async def on_voice_state_update(member, before, after):
 
 # ─── Slash commands ───────────────────────────────────────────────────────────
 
+@bot.event
+async def on_application_command_error(ctx, error):
+    import traceback
+    print(f"[error] slash command error: {type(error).__name__}: {error}")
+    traceback.print_exc()
+
 @bot.slash_command(name="join", description="Start recording this voice channel")
 async def cmd_join(ctx):
     global _rec_chan_id, _rec_txt_channel
-    if not ctx.author.voice:
-        return await ctx.respond("❌ You need to be in a voice channel first.", ephemeral=True)
-    await ctx.defer()
-    channel          = ctx.author.voice.channel
-    _rec_chan_id     = channel.id
-    _rec_txt_channel = ctx.channel
-    _start_local_recording(channel.name)
-    await ctx.followup.send(f"🎙️ Recording **{channel.name}** — type `/leave` when done.")
+    try:
+        if not ctx.author.voice:
+            return await ctx.respond("❌ You need to be in a voice channel first.", ephemeral=True)
+        await ctx.defer()
+        print("[join] deferred")
+        channel          = ctx.author.voice.channel
+        _rec_chan_id     = channel.id
+        _rec_txt_channel = ctx.channel
+        _start_local_recording(channel.name)
+        print("[join] sending followup...")
+        await ctx.followup.send(f"🎙️ Recording **{channel.name}** — type `/leave` when done.")
+        print("[join] followup sent")
+    except BaseException as e:
+        import traceback
+        print(f"[error] cmd_join: {type(e).__name__}: {e}")
+        traceback.print_exc()
 
 @bot.slash_command(name="leave", description="Stop recording and generate notes")
 async def cmd_leave(ctx):
-    if not _recording:
-        return await ctx.respond("❌ Not recording right now.", ephemeral=True)
-    await ctx.defer()
-    await ctx.followup.send("✅ Stopped. Processing notes...")
-    asyncio.create_task(process_and_post(ctx.channel))
+    try:
+        if not _recording:
+            return await ctx.respond("❌ Not recording right now.", ephemeral=True)
+        await ctx.defer()
+        await ctx.followup.send("✅ Stopped. Processing notes...")
+        asyncio.create_task(process_and_post(ctx.channel))
+    except BaseException as e:
+        import traceback
+        print(f"[error] cmd_leave: {type(e).__name__}: {e}")
+        traceback.print_exc()
 
 bot.run(os.getenv("DISCORD_BOT_TOKEN"))
