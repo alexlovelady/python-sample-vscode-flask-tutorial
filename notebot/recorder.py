@@ -70,39 +70,45 @@ def _capture_mic(frames: list, stop: Event):
             pass
 
 def _capture_loopback(frames: list, stop: Event):
+    """
+    Capture remote speakers via a virtual audio device (e.g. VB-Cable).
+    Set LOOPBACK_DEVICE in .env to a substring of the device name, e.g.:
+        LOOPBACK_DEVICE=CABLE Output
+    Route Discord output → CABLE Input, then listen to CABLE Output
+    through your headphones via Windows Sound > Recording > Listen tab.
+    """
     import warnings, ctypes
     warnings.filterwarnings("ignore", message="data discontinuity")
+
+    device_hint = os.getenv("LOOPBACK_DEVICE", "")
+    if not device_hint:
+        print("[loopback] LOOPBACK_DEVICE not set — skipping remote audio capture")
+        print("[loopback] Install VB-Cable and set LOOPBACK_DEVICE=CABLE Output in .env")
+        return
+
     try:
         ctypes.windll.ole32.CoInitialize(None)
     except Exception:
         pass
+
     try:
-        # Find loopback device for default speaker
-        default_spk = sc.default_speaker()
         loopback = None
-        try:
-            loopback = sc.get_microphone(default_spk.name, include_loopback=True)
-            print(f"[loopback] using: {loopback.name}")
-        except BaseException as e:
-            print(f"[loopback] primary lookup failed ({type(e).__name__}: {e}), trying fallback...")
-            try:
-                for m in sc.all_microphones(include_loopback=True):
-                    if "loopback" in getattr(m, 'name', '').lower():
-                        loopback = m
-                        print(f"[loopback] fallback device: {m.name}")
-                        break
-            except BaseException as e2:
-                print(f"[loopback] fallback also failed: {type(e2).__name__}: {e2}")
+        for m in sc.all_microphones(include_loopback=False):
+            if device_hint.lower() in m.name.lower():
+                loopback = m
+                break
 
         if loopback is None:
-            print("[loopback] no loopback device found — only mic will be captured")
+            print(f"[loopback] device matching '{device_hint}' not found — skipping")
+            print(f"[loopback] available mics: {[m.name for m in sc.all_microphones()]}")
             return
 
+        print(f"[loopback] capturing from: {loopback.name}")
         chunk = int(SAMPLE_RATE * 0.5)
         with loopback.recorder(samplerate=SAMPLE_RATE, channels=1, blocksize=chunk) as r:
             while not stop.is_set():
                 frames.append(r.record(numframes=chunk).copy())
-        print("[loopback] recording finished")
+        print("[loopback] finished")
     except BaseException as e:
         print(f"[loopback] error: {type(e).__name__}: {e}")
     finally:
