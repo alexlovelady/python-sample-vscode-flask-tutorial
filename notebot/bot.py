@@ -89,7 +89,7 @@ async def join(ctx):
         if ctx.guild.voice_client:
             await ctx.guild.voice_client.disconnect(force=True)
 
-        vc = await channel.connect()
+        vc = await channel.connect(timeout=120)
         connections[ctx.guild.id] = vc
         start_times[ctx.guild.id] = time.time()
         channel_names[ctx.guild.id] = channel.name
