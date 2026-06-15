@@ -54,17 +54,21 @@ function subscribeUser(receiver, userId, displayName) {
     return;
   }
 
+  let packetCount = 0;
   rawStream.on('data', packet => {
+    packetCount++;
     try {
       const pcm = decoder.decode(packet);
       writeStream.write(Buffer.from(pcm.buffer));
-    } catch (_) {}
+    } catch (err) {
+      if (packetCount <= 5) console.error(`[audio] decode error for ${displayName}:`, err.message);
+    }
   });
 
   rawStream.on('end', () => {
     try { decoder.delete(); } catch (_) {}
     writeStream.end();
-    console.log(`[audio] finished writing ${displayName}`);
+    console.log(`[audio] ${displayName}: ${packetCount} packets received`);
   });
 
   rawStream.on('error', err => {
