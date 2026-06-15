@@ -209,8 +209,17 @@ def _find_shared_channel(guild: discord.Guild):
     return None
 
 @bot.event
+async def on_error(event_method, *args, **kwargs):
+    import traceback
+    print(f"[error] unhandled exception in {event_method}:")
+    traceback.print_exc()
+
+@bot.event
 async def on_ready():
-    await bot.sync_commands()
+    try:
+        await bot.sync_commands()
+    except Exception as e:
+        print(f"[warn] sync_commands failed: {e}")
     print(f"✅ NoteBot online as {bot.user}")
     print(f"📊 Dashboard: {API_BASE}")
     print(f"🎙️  Recording: local mic + WASAPI loopback (bypasses DAVE)")
@@ -219,35 +228,43 @@ async def on_ready():
 async def on_voice_state_update(member, before, after):
     global _rec_chan_id, _rec_txt_channel
 
-    if member.id == bot.user.id:
-        return
-    if member.id not in TRIGGER_USERS:
-        return
+    try:
+        if member.id == bot.user.id:
+            return
+        if member.id not in TRIGGER_USERS:
+            return
 
-    guild = member.guild
-    txt_id = os.getenv("DISCORD_TEXT_CHANNEL_ID")
-    txt_channel = guild.get_channel(int(txt_id)) if txt_id else guild.system_channel
+        guild = member.guild
+        txt_id = os.getenv("DISCORD_TEXT_CHANNEL_ID")
+        txt_channel = guild.get_channel(int(txt_id)) if txt_id else guild.system_channel
+        print(f"[vsu] {member.display_name} moved | before={getattr(before.channel,'name',None)} after={getattr(after.channel,'name',None)} | recording={_recording}")
 
-    # Someone joined — check if all trigger users are now in the same channel
-    if not _recording:
-        shared = _find_shared_channel(guild)
-        if shared and txt_channel:
-            _rec_chan_id     = shared.id
-            _rec_txt_channel = txt_channel
-            _start_local_recording(shared.name)
-            await txt_channel.send(
-                f"🎙️ Recording **{shared.name}** — type `/leave` when done."
-            )
+        # Someone joined — check if all trigger users are now in the same channel
+        if not _recording:
+            shared = _find_shared_channel(guild)
+            print(f"[vsu] shared channel: {getattr(shared,'name',None)}, txt_channel: {txt_channel}")
+            if shared and txt_channel:
+                _rec_chan_id     = shared.id
+                _rec_txt_channel = txt_channel
+                _start_local_recording(shared.name)
+                await txt_channel.send(
+                    f"🎙️ Recording **{shared.name}** — type `/leave` when done."
+                )
 
-    # Someone left recording channel — stop if no trigger users remain
-    elif _rec_chan_id and before.channel and before.channel.id == _rec_chan_id:
-        if not _trigger_users_in_channel(guild, _rec_chan_id):
-            _rec_chan_id = None
-            txt = _rec_txt_channel
-            _rec_txt_channel = None
-            if txt:
-                await txt.send("✅ Stopped. Processing notes...")
-                asyncio.create_task(process_and_post(txt))
+        # Someone left recording channel — stop if no trigger users remain
+        elif _rec_chan_id and before.channel and before.channel.id == _rec_chan_id:
+            if not _trigger_users_in_channel(guild, _rec_chan_id):
+                _rec_chan_id = None
+                txt = _rec_txt_channel
+                _rec_txt_channel = None
+                if txt:
+                    await txt.send("✅ Stopped. Processing notes...")
+                    asyncio.create_task(process_and_post(txt))
+
+    except Exception as e:
+        import traceback
+        print(f"[error] on_voice_state_update: {e}")
+        traceback.print_exc()
 
 # ─── Slash commands ───────────────────────────────────────────────────────────
 
