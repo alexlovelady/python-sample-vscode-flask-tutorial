@@ -15,3 +15,4 @@ echo.
 start "NoteBot Dashboard" cmd /k "cd /d "%~dp0" && call venv\Scripts\activate && python -m dashboard.server"
 timeout /t 2 >nul
 python bot.py
+pause
