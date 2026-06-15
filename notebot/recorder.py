@@ -13,7 +13,7 @@ import os, io, wave, time, asyncio
 from threading import Event, Thread
 
 import numpy as np
-import httpx
+import requests
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -179,11 +179,13 @@ async def process_and_post(txt_channel: discord.TextChannel):
     form = [("channel", chan_name), ("duration", str(duration))] + \
            [("speaker_names", n) for n in names]
 
+    def _post():
+        resp = requests.post(f"{API_BASE}/process", data=form, files=files, timeout=600)
+        resp.raise_for_status()
+        return resp.json()
+
     try:
-        async with httpx.AsyncClient(timeout=600) as client:
-            resp = await client.post(f"{API_BASE}/process", data=form, files=files)
-            resp.raise_for_status()
-            result = resp.json()
+        result = await asyncio.to_thread(_post)
 
         from formatter import build_embed
         embed = build_embed(
