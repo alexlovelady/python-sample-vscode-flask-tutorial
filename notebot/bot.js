@@ -45,7 +45,7 @@ function subscribeUser(receiver, userId, displayName) {
   const filename    = `rec_${userId}_${Date.now()}.ogg`;
   const rawStream   = receiver.subscribe(userId, { end: EndBehaviorType.Manual });
   const oggEncoder  = new prism.opus.OggLogicalBitstream({
-    opusHead: new prism.opus.OpusHead({ channelCount: 2, sampleRate: 48000 }),
+    opusHead: { channelCount: 2, sampleRate: 48000 },
     pageSizeControl: { maxPackets: 10 },
   });
   const writeStream = createWriteStream(filename);
