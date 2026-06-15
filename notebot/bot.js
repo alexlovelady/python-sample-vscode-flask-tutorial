@@ -42,14 +42,19 @@ let speakerFiles      = new Map(); // userId → { filename, displayName, rawStr
 function subscribeUser(receiver, userId, displayName) {
   if (speakerFiles.has(userId)) return;
 
-  const filename    = `rec_${userId}_${Date.now()}.pcm`;
+  const filename    = `rec_${userId}_${Date.now()}.ogg`;
   const rawStream   = receiver.subscribe(userId, { end: EndBehaviorType.Manual });
-  const decoder     = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
+  const oggEncoder  = new prism.opus.OggLogicalBitstream({
+    opusHead: new prism.opus.OpusHead({ channelCount: 2, sampleRate: 48000 }),
+    pageSizeControl: { maxPackets: 10 },
+  });
   const writeStream = createWriteStream(filename);
 
-  pipeline(rawStream, decoder, writeStream, err => {
+  pipeline(rawStream, oggEncoder, writeStream, err => {
     if (err && err.code !== 'ERR_STREAM_DESTROYED') {
-      console.error(`[audio] error for ${displayName}:`, err.message);
+      console.error(`[audio] pipeline error for ${displayName}:`, err.message);
+    } else {
+      console.log(`[audio] pipeline finished for ${displayName}`);
     }
   });
 
@@ -141,8 +146,8 @@ async function processRecording(duration, chanName, txtChan) {
       if (existsSync(filename) && statSync(filename).size > 0) {
         console.log(`[process] including ${displayName} — ${statSync(filename).size} bytes`);
         form.append('audio_files',   createReadStream(filename), {
-          filename:    `${userId}.pcm`,
-          contentType: 'audio/pcm',
+          filename:    `${userId}.ogg`,
+          contentType: 'audio/ogg',
         });
         form.append('speaker_names', displayName);
         hasAudio = true;
