@@ -35,31 +35,31 @@ let startTime         = null;
 let recordingChanId   = null;
 let recordingChanName = '';
 let recordingText     = null;
-let speakerFiles      = new Map(); // userId → { filename, displayName, rawStream }
+let speakerFiles      = new Map(); // userId → { filename, displayName, rawStream, writeStream }
 
 // ─── Audio helpers ────────────────────────────────────────────────────────────
 
 function subscribeUser(receiver, userId, displayName) {
   if (speakerFiles.has(userId)) return;
 
-  const filename  = `rec_${userId}_${Date.now()}.pcm`;
-  const rawStream = receiver.subscribe(userId, { end: EndBehaviorType.Manual });
-  const decoder   = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
-  const fileOut   = createWriteStream(filename);
+  const filename    = `rec_${userId}_${Date.now()}.pcm`;
+  const rawStream   = receiver.subscribe(userId, { end: EndBehaviorType.Manual });
+  const decoder     = new prism.opus.Decoder({ frameSize: 960, channels: 2, rate: 48000 });
+  const writeStream = createWriteStream(filename);
 
-  pipeline(rawStream, decoder, fileOut, err => {
+  pipeline(rawStream, decoder, writeStream, err => {
     if (err && err.code !== 'ERR_STREAM_DESTROYED') {
       console.error(`[audio] error for ${displayName}:`, err.message);
     }
   });
 
-  speakerFiles.set(userId, { filename, displayName, rawStream });
+  speakerFiles.set(userId, { filename, displayName, rawStream, writeStream });
   console.log(`[rec] subscribed to ${displayName}`);
 }
 
 // ─── Recording lifecycle ──────────────────────────────────────────────────────
 
-async function startRecording(voiceChannel, txtChannel) {
+async function startRecording(voiceChannel, txtChannel, sendMessage = true) {
   if (voiceConn) return;
 
   recordingText     = txtChannel;
@@ -92,7 +92,9 @@ async function startRecording(voiceChannel, txtChannel) {
     }
   });
 
-  await txtChannel.send(`🎙️ Recording **${voiceChannel.name}** — type \`/leave\` when done.`);
+  if (sendMessage) {
+    await txtChannel.send(`🎙️ Recording **${voiceChannel.name}** — type \`/leave\` when done.`);
+  }
 }
 
 async function stopRecording() {
@@ -102,17 +104,25 @@ async function stopRecording() {
   const txtChan   = recordingText;
   const chanName  = recordingChanName;
 
-  // End all speaker streams
+  // Signal end of all raw streams (push null, don't destroy yet)
   for (const [, { rawStream }] of speakerFiles) {
-    try { rawStream.push(null); rawStream.destroy(); } catch (_) {}
+    try { rawStream.push(null); } catch (_) {}
   }
+
+  // Wait for all write streams to finish flushing (up to 8 seconds)
+  await Promise.all([...speakerFiles.values()].map(({ writeStream }) =>
+    new Promise(resolve => {
+      if (writeStream.writableEnded || writeStream.closed) return resolve();
+      writeStream.once('finish', resolve);
+      writeStream.once('close', resolve);
+      setTimeout(resolve, 8000);
+    })
+  ));
 
   voiceConn.destroy();
   voiceConn       = null;
   recordingChanId = null;
 
-  // Let file streams flush
-  await new Promise(r => setTimeout(r, 2000));
   await processRecording(duration, chanName, txtChan);
 }
 
@@ -129,12 +139,15 @@ async function processRecording(duration, chanName, txtChan) {
     let hasAudio = false;
     for (const [userId, { filename, displayName }] of speakerFiles) {
       if (existsSync(filename) && statSync(filename).size > 0) {
+        console.log(`[process] including ${displayName} — ${statSync(filename).size} bytes`);
         form.append('audio_files',   createReadStream(filename), {
           filename:    `${userId}.pcm`,
           contentType: 'audio/pcm',
         });
         form.append('speaker_names', displayName);
         hasAudio = true;
+      } else {
+        console.log(`[process] skipping ${displayName} — file missing or empty`);
       }
     }
 
@@ -218,7 +231,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       const txtChan = TEXT_CHANNEL_ID
         ? guild.channels.cache.get(TEXT_CHANNEL_ID)
         : guild.systemChannel;
-      if (txtChan) await startRecording(channel, txtChan);
+      if (txtChan) await startRecording(channel, txtChan, true);
     }
   }
 
@@ -241,8 +254,8 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: '❌ You need to be in a voice channel first.', ephemeral: true });
     }
     await interaction.deferReply();
-    await startRecording(interaction.member.voice.channel, interaction.channel);
-    await interaction.followUp(`🎙️ Recording **${recordingChanName}** — type \`/leave\` when done.`);
+    await startRecording(interaction.member.voice.channel, interaction.channel, false);
+    await interaction.editReply(`🎙️ Recording **${recordingChanName}** — type \`/leave\` when done.`);
   }
 
   if (interaction.commandName === 'leave') {
@@ -250,7 +263,7 @@ client.on('interactionCreate', async interaction => {
       return interaction.reply({ content: '❌ Not recording right now.', ephemeral: true });
     }
     await interaction.deferReply();
-    await interaction.followUp('✅ Stopped. Processing notes...');
+    await interaction.editReply('✅ Stopped. Processing notes...');
     await stopRecording();
   }
 });
