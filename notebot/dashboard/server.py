@@ -83,11 +83,10 @@ async def process_recording(
     full_transcript_lines = []
     for audio_file, display_name in zip(audio_files, speaker_names):
         try:
-            pcm_bytes = await audio_file.read()
-            if not pcm_bytes:
+            audio_bytes = await audio_file.read()
+            if not audio_bytes:
                 continue
-            wav_bytes = pcm_to_wav(pcm_bytes)
-            text = await asyncio.to_thread(transcribe_audio, wav_bytes)
+            text = await asyncio.to_thread(transcribe_audio, audio_bytes)
             if text.strip():
                 full_transcript_lines.append(f"{display_name}: {text.strip()}")
         except Exception as e:
