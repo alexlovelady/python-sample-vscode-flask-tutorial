@@ -18,15 +18,59 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="/", intents=intents)
 
-connections = {}     # guild_id → voice_client
-start_times = {}     # guild_id → unix timestamp
-channel_names = {}   # guild_id → voice channel name
+TRIGGER_USERS = {236708079872376834, 1074610938684121138}  # Mike, Alex
+
+connections = {}          # guild_id → voice_client
+start_times = {}          # guild_id → unix timestamp
+channel_names = {}        # guild_id → voice channel name
+recording_channels = {}   # guild_id → channel_id being auto-recorded
 
 @bot.event
 async def on_ready():
     await bot.sync_commands()
     print(f"✅ NoteBot online as {bot.user}")
     print(f"📊 Dashboard: http://localhost:{os.getenv('DASHBOARD_PORT', 8080)}")
+
+@bot.event
+async def on_voice_state_update(member, before, after):
+    guild = member.guild
+    guild_id = guild.id
+
+    # Someone joined or moved into a channel
+    if after.channel is not None and before.channel != after.channel:
+        channel = after.channel
+        member_ids = {m.id for m in channel.members}
+        if TRIGGER_USERS.issubset(member_ids) and guild_id not in connections:
+            text_channel = guild.system_channel or next(
+                (c for c in guild.text_channels if c.permissions_for(guild.me).send_messages), None
+            )
+            if text_channel is None:
+                return
+            vc = await channel.connect()
+            connections[guild_id] = vc
+            start_times[guild_id] = time.time()
+            channel_names[guild_id] = channel.name
+            recording_channels[guild_id] = channel.id
+            vc.start_recording(
+                discord.sinks.MP3Sink(),
+                recording_finished,
+                text_channel,
+                guild_id
+            )
+            await text_channel.send(
+                f"🎙️ Auto-recording **{channel.name}** — both members present."
+            )
+
+    # Someone left or moved out of the recording channel
+    if (before.channel is not None
+            and guild_id in connections
+            and before.channel.id == recording_channels.get(guild_id)):
+        remaining_ids = {m.id for m in before.channel.members}
+        if not TRIGGER_USERS.intersection(remaining_ids):
+            vc = connections.pop(guild_id)
+            recording_channels.pop(guild_id, None)
+            vc.stop_recording()
+            await vc.disconnect()
 
 @bot.slash_command(name="join", description="Join your voice channel and start recording")
 async def join(ctx):
@@ -131,6 +175,7 @@ async def leave(ctx):
         return await ctx.respond("❌ I'm not recording right now.", ephemeral=True)
 
     vc = connections.pop(ctx.guild.id)
+    recording_channels.pop(ctx.guild.id, None)
     vc.stop_recording()
     await vc.disconnect()
     await ctx.respond("✅ Stopped. Processing notes now...")
