@@ -13,7 +13,6 @@ import os, io, wave, time, asyncio
 from threading import Event, Thread
 
 import numpy as np
-import soundcard as sc
 import httpx
 import discord
 from discord.ext import commands
@@ -71,52 +70,31 @@ def _capture_mic(frames: list, stop: Event):
         print(f"[mic] error: {type(e).__name__}: {e}")
 
 def _capture_loopback(frames: list, stop: Event):
-    """
-    Capture remote speakers via a virtual audio device (e.g. VB-Cable).
-    Set LOOPBACK_DEVICE in .env to a substring of the device name, e.g.:
-        LOOPBACK_DEVICE=CABLE Output
-    Route Discord output → CABLE Input, then listen to CABLE Output
-    through your headphones via Windows Sound > Recording > Listen tab.
-    """
-    import warnings, ctypes
-    warnings.filterwarnings("ignore", message="data discontinuity")
-
+    import sounddevice as sd
     device_hint = os.getenv("LOOPBACK_DEVICE", "")
     if not device_hint:
-        print("[loopback] LOOPBACK_DEVICE not set — skipping remote audio capture")
+        print("[loopback] LOOPBACK_DEVICE not set — skipping")
         print("[loopback] Install VB-Cable and set LOOPBACK_DEVICE=CABLE Output in .env")
         return
-
     try:
-        ctypes.windll.ole32.CoInitialize(None)
-    except Exception:
-        pass
-
-    try:
-        loopback = None
-        for m in sc.all_microphones(include_loopback=False):
-            if device_hint.lower() in m.name.lower():
-                loopback = m
+        device = None
+        for i, d in enumerate(sd.query_devices()):
+            if device_hint.lower() in d['name'].lower() and d['max_input_channels'] > 0:
+                device = i
                 break
-
-        if loopback is None:
-            print(f"[loopback] device matching '{device_hint}' not found — skipping")
-            print(f"[loopback] available mics: {[m.name for m in sc.all_microphones()]}")
+        if device is None:
+            print(f"[loopback] '{device_hint}' not found — skipping")
+            print(f"[loopback] inputs: {[d['name'] for d in sd.query_devices() if d['max_input_channels'] > 0]}")
             return
-
-        print(f"[loopback] capturing from: {loopback.name}")
+        print(f"[loopback] capturing from: {sd.query_devices(device)['name']}")
         chunk = int(SAMPLE_RATE * 0.5)
-        with loopback.recorder(samplerate=SAMPLE_RATE, channels=1, blocksize=chunk) as r:
+        with sd.InputStream(device=device, channels=1, samplerate=SAMPLE_RATE, blocksize=chunk) as stream:
             while not stop.is_set():
-                frames.append(r.record(numframes=chunk).copy())
+                data, _ = stream.read(chunk)
+                frames.append(data.copy())
         print("[loopback] finished")
-    except BaseException as e:
+    except Exception as e:
         print(f"[loopback] error: {type(e).__name__}: {e}")
-    finally:
-        try:
-            ctypes.windll.ole32.CoUninitialize()
-        except Exception:
-            pass
 
 def _frames_to_wav(frames: list) -> bytes:
     if not frames:
