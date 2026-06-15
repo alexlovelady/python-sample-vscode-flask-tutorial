@@ -180,7 +180,7 @@ async def process_and_post(txt_channel: discord.TextChannel):
            [("speaker_names", n) for n in names]
 
     def _post():
-        resp = requests.post(f"{API_BASE}/process", data=form, files=files, timeout=600)
+        resp = requests.post(f"{API_BASE}/process", data=form, files=files, timeout=1800)
         resp.raise_for_status()
         return resp.json()
 

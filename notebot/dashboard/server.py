@@ -149,4 +149,4 @@ async def process_recording(
 
 if __name__ == "__main__":
     port = int(os.getenv("DASHBOARD_PORT", 8080))
-    uvicorn.run("dashboard.server:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("dashboard.server:app", host="0.0.0.0", port=port, reload=False, timeout_keep_alive=1800)
