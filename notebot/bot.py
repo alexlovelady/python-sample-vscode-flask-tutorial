@@ -24,6 +24,9 @@ TRIGGER_USERS = {236708079872376834, 1074610938684121138}  # Mike, Alex
 class NoteSink(discord.sinks.MP3Sink):
     __sink_listeners__ = {}
 
+    def walk_children(self):
+        return []
+
 connections = {}          # guild_id → voice_client
 start_times = {}          # guild_id → unix timestamp
 channel_names = {}        # guild_id → voice channel name
