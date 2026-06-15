@@ -107,10 +107,13 @@ async def process_recording(
     # Google Doc
     doc_url = ""
     try:
+        print("[google_docs] creating doc...")
         doc_url = await asyncio.to_thread(
             create_meeting_doc, meeting_title, summary, transcript, speaker_names
         )
+        print(f"[google_docs] done: {doc_url}")
     except Exception as e:
+        import traceback; traceback.print_exc()
         print(f"[google_docs] error: {e}")
 
     # Airtable
