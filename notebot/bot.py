@@ -41,8 +41,12 @@ async def on_voice_state_update(member, before, after):
         channel = after.channel
         member_ids = {m.id for m in channel.members}
         if TRIGGER_USERS.issubset(member_ids) and guild_id not in connections:
-            text_channel = guild.system_channel or next(
-                (c for c in guild.text_channels if c.permissions_for(guild.me).send_messages), None
+            channel_id = os.getenv("DISCORD_TEXT_CHANNEL_ID")
+            text_channel = (
+                guild.get_channel(int(channel_id)) if channel_id
+                else guild.system_channel or next(
+                    (c for c in guild.text_channels if c.permissions_for(guild.me).send_messages), None
+                )
             )
             if text_channel is None:
                 return
