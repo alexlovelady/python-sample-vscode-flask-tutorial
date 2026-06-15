@@ -181,6 +181,8 @@ async def process_and_post(txt_channel: discord.TextChannel):
 
     def _post():
         resp = requests.post(f"{API_BASE}/process", data=form, files=files, timeout=1800)
+        if not resp.ok:
+            print(f"[process] server returned {resp.status_code}: {resp.text[:500]}")
         resp.raise_for_status()
         return resp.json()
 

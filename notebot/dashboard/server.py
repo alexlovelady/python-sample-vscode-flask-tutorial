@@ -101,6 +101,7 @@ async def process_recording(
     try:
         summary = await summarize_transcript(transcript)
     except Exception as e:
+        import traceback; traceback.print_exc()
         return JSONResponse({"error": f"Summarization failed: {e}"}, status_code=500)
 
     # Google Doc
