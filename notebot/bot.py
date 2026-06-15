@@ -83,22 +83,30 @@ async def join(ctx):
         return await ctx.respond("❌ You need to be in a voice channel first.", ephemeral=True)
 
     await ctx.defer()
-    channel = ctx.author.voice.channel
-    vc = await channel.connect()
-    connections[ctx.guild.id] = vc
-    start_times[ctx.guild.id] = time.time()
-    channel_names[ctx.guild.id] = channel.name
+    try:
+        channel = ctx.author.voice.channel
 
-    vc.start_recording(
-        discord.sinks.MP3Sink(),
-        recording_finished,
-        ctx.channel,
-        ctx.guild.id
-    )
+        if ctx.guild.voice_client:
+            await ctx.guild.voice_client.disconnect(force=True)
 
-    await ctx.followup.send(
-        f"🎙️ Recording **{channel.name}** — type `/leave` when the meeting ends."
-    )
+        vc = await channel.connect()
+        connections[ctx.guild.id] = vc
+        start_times[ctx.guild.id] = time.time()
+        channel_names[ctx.guild.id] = channel.name
+
+        vc.start_recording(
+            discord.sinks.MP3Sink(),
+            recording_finished,
+            ctx.channel,
+            ctx.guild.id
+        )
+
+        await ctx.followup.send(
+            f"🎙️ Recording **{channel.name}** — type `/leave` when the meeting ends."
+        )
+    except Exception as e:
+        print(f"Join error: {e}")
+        await ctx.followup.send(f"❌ Failed to join: {e}")
 
 async def recording_finished(sink, text_channel, guild_id):
     duration = int((time.time() - start_times.pop(guild_id, time.time())) / 60)
