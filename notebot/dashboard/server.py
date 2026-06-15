@@ -1,13 +1,19 @@
-import uvicorn, os, json
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+import uvicorn, os, json, wave, io, asyncio
+from fastapi import FastAPI, Request, UploadFile, File, Form
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader
 from dotenv import load_dotenv
+from datetime import datetime
+from typing import List
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from db import get_all_meetings, get_meeting
+from db import get_all_meetings, get_meeting, save_meeting
+from transcriber import transcribe_audio
+from summarizer import summarize_transcript
+from google_docs import create_meeting_doc
+from airtable_tasks import log_tasks
 
 load_dotenv()
 
@@ -27,6 +33,15 @@ def parse_json_field(value):
 
 def render(template_name: str, **ctx) -> HTMLResponse:
     return HTMLResponse(jinja_env.get_template(template_name).render(**ctx))
+
+def pcm_to_wav(pcm_bytes: bytes, channels: int = 2, rate: int = 48000, sampwidth: int = 2) -> bytes:
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(sampwidth)
+        wf.setframerate(rate)
+        wf.writeframes(pcm_bytes)
+    return buf.getvalue()
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -51,6 +66,86 @@ async def meeting_detail(request: Request, meeting_id: int):
         meeting=meeting,
         title=os.getenv("DASHBOARD_TITLE", "AMP Titans Meeting Notes")
     )
+
+@app.post("/process")
+async def process_recording(
+    channel: str = Form(...),
+    duration: str = Form(...),
+    audio_files: List[UploadFile] = File(...),
+    speaker_names: List[str] = Form(...),
+):
+    duration_min = int(duration)
+    meeting_date = datetime.utcnow().strftime("%Y-%m-%d")
+    meeting_title = f"AMP Titans Meeting — {meeting_date}"
+
+    # Transcribe each speaker
+    full_transcript_lines = []
+    for audio_file, display_name in zip(audio_files, speaker_names):
+        try:
+            pcm_bytes = await audio_file.read()
+            if not pcm_bytes:
+                continue
+            wav_bytes = pcm_to_wav(pcm_bytes)
+            text = await asyncio.to_thread(transcribe_audio, wav_bytes)
+            if text.strip():
+                full_transcript_lines.append(f"{display_name}: {text.strip()}")
+        except Exception as e:
+            print(f"[transcribe] error for {display_name}: {e}")
+
+    if not full_transcript_lines:
+        return JSONResponse({"error": "No audio transcribed"}, status_code=422)
+
+    transcript = "\n".join(full_transcript_lines)
+
+    # Summarize
+    try:
+        summary = await summarize_transcript(transcript)
+    except Exception as e:
+        return JSONResponse({"error": f"Summarization failed: {e}"}, status_code=500)
+
+    # Google Doc
+    doc_url = ""
+    try:
+        doc_url = await asyncio.to_thread(
+            create_meeting_doc, meeting_title, summary, transcript, speaker_names
+        )
+    except Exception as e:
+        print(f"[google_docs] error: {e}")
+
+    # Airtable
+    try:
+        await asyncio.to_thread(
+            log_tasks, summary.get("action_items", []), meeting_date, meeting_title
+        )
+    except Exception as e:
+        print(f"[airtable] error: {e}")
+
+    # SQLite
+    meeting_id = save_meeting({
+        "date": meeting_date,
+        "channel": channel,
+        "duration_minutes": duration_min,
+        "speakers": speaker_names,
+        "summary": summary.get("summary", ""),
+        "topics": summary.get("topics", []),
+        "decisions": summary.get("decisions", []),
+        "action_items": summary.get("action_items", []),
+        "blockers": summary.get("blockers", []),
+        "transcript": transcript,
+        "google_doc_url": doc_url,
+    })
+
+    return JSONResponse({
+        "meeting_id": meeting_id,
+        "summary": summary.get("summary", ""),
+        "topics": summary.get("topics", []),
+        "decisions": summary.get("decisions", []),
+        "action_items": summary.get("action_items", []),
+        "blockers": summary.get("blockers", []),
+        "speakers": speaker_names,
+        "duration": duration_min,
+        "google_doc_url": doc_url,
+    })
 
 if __name__ == "__main__":
     port = int(os.getenv("DASHBOARD_PORT", 8080))
