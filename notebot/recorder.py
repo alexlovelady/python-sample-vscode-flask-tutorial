@@ -225,16 +225,16 @@ async def process_and_post(txt_channel: discord.TextChannel):
 def _trigger_users_in_channel(guild: discord.Guild, channel_id: int) -> set:
     return {
         uid for uid in TRIGGER_USERS
-        if (vs := guild.voice_states.get(uid)) and vs.channel and vs.channel.id == channel_id
+        if (m := guild.get_member(uid)) and m.voice and m.voice.channel and m.voice.channel.id == channel_id
     }
 
 def _find_shared_channel(guild: discord.Guild):
     """Return channel if all trigger users are in the same voice channel."""
     positions = {}
     for uid in TRIGGER_USERS:
-        vs = guild.voice_states.get(uid)
-        if vs and vs.channel:
-            positions[uid] = vs.channel
+        m = guild.get_member(uid)
+        if m and m.voice and m.voice.channel:
+            positions[uid] = m.voice.channel
     if len(positions) == len(TRIGGER_USERS):
         channels = list(positions.values())
         if all(c.id == channels[0].id for c in channels):
