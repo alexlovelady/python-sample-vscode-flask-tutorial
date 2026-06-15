@@ -55,7 +55,16 @@ def _capture_mic(frames: list, stop: Event):
     except Exception:
         pass
     try:
-        mic   = sc.default_microphone()
+        mic_hint = os.getenv("MIC_DEVICE", "")
+        if mic_hint:
+            mic = next((m for m in sc.all_microphones() if mic_hint.lower() in m.name.lower()), None)
+            if mic is None:
+                print(f"[mic] device matching '{mic_hint}' not found, falling back to default")
+                print(f"[mic] available: {[m.name for m in sc.all_microphones()]}")
+                mic = sc.default_microphone()
+        else:
+            mic = sc.default_microphone()
+        print(f"[mic] capturing from: {mic.name}")
         chunk = int(SAMPLE_RATE * 0.5)
         with mic.recorder(samplerate=SAMPLE_RATE, channels=1, blocksize=chunk) as r:
             while not stop.is_set():
