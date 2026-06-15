@@ -48,35 +48,27 @@ _rec_txt_channel = None
 # ─── Audio capture threads ────────────────────────────────────────────────────
 
 def _capture_mic(frames: list, stop: Event):
-    import warnings, ctypes
-    warnings.filterwarnings("ignore", message="data discontinuity")
+    import sounddevice as sd
+    mic_hint = os.getenv("MIC_DEVICE", "")
     try:
-        ctypes.windll.ole32.CoInitialize(None)
-    except Exception:
-        pass
-    try:
-        mic_hint = os.getenv("MIC_DEVICE", "")
+        device = None
         if mic_hint:
-            mic = next((m for m in sc.all_microphones() if mic_hint.lower() in m.name.lower()), None)
-            if mic is None:
-                print(f"[mic] device matching '{mic_hint}' not found, falling back to default")
-                print(f"[mic] available: {[m.name for m in sc.all_microphones()]}")
-                mic = sc.default_microphone()
-        else:
-            mic = sc.default_microphone()
-        print(f"[mic] capturing from: {mic.name}")
+            for i, d in enumerate(sd.query_devices()):
+                if mic_hint.lower() in d['name'].lower() and d['max_input_channels'] > 0:
+                    device = i
+                    break
+            if device is None:
+                print(f"[mic] '{mic_hint}' not found — using default")
+                print(f"[mic] inputs: {[d['name'] for d in sd.query_devices() if d['max_input_channels'] > 0]}")
+        print(f"[mic] capturing from: {sd.query_devices(device, 'input')['name']}")
         chunk = int(SAMPLE_RATE * 0.5)
-        with mic.recorder(samplerate=SAMPLE_RATE, channels=1, blocksize=chunk) as r:
+        with sd.InputStream(device=device, channels=1, samplerate=SAMPLE_RATE, blocksize=chunk) as stream:
             while not stop.is_set():
-                frames.append(r.record(numframes=chunk).copy())
+                data, _ = stream.read(chunk)
+                frames.append(data.copy())
         print("[mic] recording finished")
-    except BaseException as e:
+    except Exception as e:
         print(f"[mic] error: {type(e).__name__}: {e}")
-    finally:
-        try:
-            ctypes.windll.ole32.CoUninitialize()
-        except Exception:
-            pass
 
 def _capture_loopback(frames: list, stop: Event):
     """
