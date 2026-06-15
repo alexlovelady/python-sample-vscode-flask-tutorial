@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-import asyncio, os, time
+import asyncio, os, time, traceback
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -104,9 +104,12 @@ async def join(ctx):
         await ctx.followup.send(
             f"🎙️ Recording **{channel.name}** — type `/leave` when the meeting ends."
         )
-    except Exception as e:
-        print(f"Join error: {e}")
-        await ctx.followup.send(f"❌ Failed to join: {e}")
+    except BaseException as e:
+        traceback.print_exc()
+        try:
+            await ctx.followup.send(f"❌ Failed to join: {type(e).__name__}: {e}")
+        except Exception:
+            pass
 
 async def recording_finished(sink, text_channel, guild_id):
     duration = int((time.time() - start_times.pop(guild_id, time.time())) / 60)
