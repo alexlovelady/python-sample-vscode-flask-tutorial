@@ -48,9 +48,11 @@ _rec_txt_channel = None
 # ─── Audio capture threads ────────────────────────────────────────────────────
 
 def _capture_mic(frames: list, stop: Event):
+    import warnings
+    warnings.filterwarnings("ignore", message="data discontinuity")
     try:
         mic   = sc.default_microphone()
-        chunk = int(SAMPLE_RATE * 0.1)
+        chunk = int(SAMPLE_RATE * 0.5)   # 500ms chunks — more stable than 100ms
         with mic.recorder(samplerate=SAMPLE_RATE, channels=1, blocksize=chunk) as r:
             while not stop.is_set():
                 frames.append(r.record(numframes=chunk).copy())
@@ -58,10 +60,25 @@ def _capture_mic(frames: list, stop: Event):
         print(f"[mic] error: {e}")
 
 def _capture_loopback(frames: list, stop: Event):
+    import warnings
+    warnings.filterwarnings("ignore", message="data discontinuity")
     try:
-        spk   = sc.default_speaker()
-        chunk = int(SAMPLE_RATE * 0.1)
-        with spk.recorder(samplerate=SAMPLE_RATE, channels=1, blocksize=chunk) as r:
+        # Windows: loopback is a virtual mic derived from the speaker device
+        default_spk = sc.default_speaker()
+        try:
+            loopback = sc.get_microphone(default_spk.name, include_loopback=True)
+        except Exception:
+            # Fallback: pick any loopback device
+            loopback = next(
+                (m for m in sc.all_microphones(include_loopback=True)
+                 if "loopback" in m.name.lower()),
+                None
+            )
+        if loopback is None:
+            print("[loopback] no loopback device found — only mic will be recorded")
+            return
+        chunk = int(SAMPLE_RATE * 0.5)
+        with loopback.recorder(samplerate=SAMPLE_RATE, channels=1, blocksize=chunk) as r:
             while not stop.is_set():
                 frames.append(r.record(numframes=chunk).copy())
     except Exception as e:
