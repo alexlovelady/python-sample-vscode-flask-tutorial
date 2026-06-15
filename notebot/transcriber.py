@@ -9,11 +9,14 @@ _model = None
 def get_model():
     global _model
     if _model is None:
-        _model = WhisperModel(
-            os.getenv("WHISPER_MODEL", "large-v3"),
-            device=os.getenv("WHISPER_DEVICE", "cuda"),
-            compute_type=os.getenv("WHISPER_COMPUTE_TYPE", "float16")
-        )
+        device = os.getenv("WHISPER_DEVICE", "cuda")
+        compute_type = os.getenv("WHISPER_COMPUTE_TYPE", "float16")
+        model_name = os.getenv("WHISPER_MODEL", "large-v3")
+        try:
+            _model = WhisperModel(model_name, device=device, compute_type=compute_type)
+        except Exception as e:
+            print(f"[whisper] {device} failed ({e}), falling back to cpu/int8")
+            _model = WhisperModel(model_name, device="cpu", compute_type="int8")
     return _model
 
 def transcribe_audio(audio_bytes: bytes) -> str:
