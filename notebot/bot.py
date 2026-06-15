@@ -168,10 +168,12 @@ async def recording_finished(sink, text_channel, guild_id):
         "google_doc_url": doc_url
     })
 
-    # 4. Discord embed
+    # 4. Discord embed + doc link
     embed = build_embed(summary, speaker_names, duration, doc_url, meeting_id)
     await status_msg.delete()
     await text_channel.send(embed=embed)
+    if doc_url:
+        await text_channel.send(f"📄 **Google Doc:** {doc_url}")
 
 @bot.slash_command(name="leave", description="Stop recording and generate meeting notes")
 async def leave(ctx):
