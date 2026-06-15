@@ -82,6 +82,7 @@ async def join(ctx):
     if not ctx.author.voice:
         return await ctx.respond("❌ You need to be in a voice channel first.", ephemeral=True)
 
+    await ctx.defer()
     channel = ctx.author.voice.channel
     vc = await channel.connect()
     connections[ctx.guild.id] = vc
@@ -95,7 +96,7 @@ async def join(ctx):
         ctx.guild.id
     )
 
-    await ctx.respond(
+    await ctx.followup.send(
         f"🎙️ Recording **{channel.name}** — type `/leave` when the meeting ends."
     )
 
@@ -181,10 +182,11 @@ async def leave(ctx):
     if ctx.guild.id not in connections:
         return await ctx.respond("❌ I'm not recording right now.", ephemeral=True)
 
+    await ctx.defer()
     vc = connections.pop(ctx.guild.id)
     recording_channels.pop(ctx.guild.id, None)
     vc.stop_recording()
     await vc.disconnect()
-    await ctx.respond("✅ Stopped. Processing notes now...")
+    await ctx.followup.send("✅ Stopped. Processing notes now...")
 
 bot.run(os.getenv("DISCORD_BOT_TOKEN"))
